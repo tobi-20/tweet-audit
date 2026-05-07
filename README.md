@@ -1,68 +1,80 @@
+# Go Tweet Processor — Architecture & Design Decisions
+
+A system for sequential AI-powered tweet processing with checkpointing.
+---
 ## Architecture Overview
 
 ```
 Data → Parser → Brain (ProcessTweets) → External IO (AI + Writer)
 ```
-I structured the system  as a pipeline where ProcessTweets is the coordinator, and external dependencies like the AI client and writer are abstracted with interfaces. This keeps business logic separate from external I/O and makes the system easier to test by  being able to swap implementations.
 
+## Core Structure
 
+### AI Abstraction
 
-## Concurrency Strategy
-
-**Decision: Sequential execution.**
-
-| Option | Trade-off |
-|--------|-----------|
-| Sequential | Predictable, checkpoint-safe, rate-limit-friendly |
-| Goroutines | Faster, but requires careful batching and complicates recovery |
-
-Goroutines are only justified if you stay safely with strict concurrency limits. For now, sequential wins because external APIs are unpredictable and recoverability beats speed.
-
----
-
-## Error Handling
-
-**Approach: Fail-fast + checkpoint.**
-
-- API error → stop execution immediately
-- Resume from last saved progress on restart
-- Progress is saved **only after a successful response** (never on failure)
-
-```
-item 4 fails → saveProgress(3) → restart later → resumes at 4
+```go
+type AIClient interface {
+    Generate(prompt string) (string, error)
+}
 ```
 
-Saving on failure creates ambiguity. Saving only on success guarantees idempotent restarts.
+Depend on the interface, not the implementation. Swapping clients means just a new struct, not touching the service.
 
----
+### Process tweets Layer
 
-## Performance vs. Safety Trade-offs
+```go
+func (p *ContentParser) ProcessTweets(i int, tweets []ArchiveTweet) error {
+	txt := tweets[i].Tweet.FullText
+	//
+	if txt == "" {
+		return errors.New("the full text is empty")
+	}
+	if tweets[i].Tweet.ID == "" {
+		return errors.New("tweet id missing")
+	}
 
-| Factor | Decision | Reason |
-|--------|----------|--------|
-| Speed | Low priority | External API can have unpredictable latency due to network speed and other factors |
-| API cost | Controlled | Sequential processing helps prevent unnecessary expenses |
-| Reliability | High priority | Checkpoint recovery is the core reason |
-| Concurrency | None | Adds unnecessary complexity right now |
+	if USERNAME == "" {
+		return errors.New("username missing")
+	}
+	instr := FormatPrompt(txt)
+	tweetAddr := "https://x.com/" + USERNAME + "/status/" + tweets[i].Tweet.ID
 
+	//l
+	log.Println(tweetAddr)
 
----
+	resp, err := p.GetResponse(instr)
+	if err != nil {
+		return err
+	}
+	decision, err := shouldDelete(resp)
+	if err != nil {
+		return err
+	}
+	//
 
-## Why Go Fits This Problem
-
-- **Simple error model** — `(value, error)` return pairs make failing fast easier and error handling easier.
-
-- **Easy file interactions** — There are various built in functions that make I/O operations easy manipulable
-
----
-
-## Resumability Design
-
-The checkpoint file holds the last successfully processed index.
+	if err := p.writer.Set(tweetAddr, decision); err != nil {
+		return err
+	}
+	//
+	if err := loader.SaveProgress(i); err != nil {
+		return err
+	}
+	return nil
+}
 
 ```
-On start  → read checkpoint → start = checkpoint + 1
-On success → write checkpoint → i
-On failure → return error → checkpoint unchanged
+
+Single responsibility: Delegate AI work, persist progress.
+
+### Entry Point
+
+```go
+func main() {
+    p, err := parser.NewContentParser("flagged.csv")
+
+	path := os.Args[1]
+	err = p.Parse(path)
+}
 ```
 
+---
