@@ -1,128 +1,68 @@
-# tweet-audit
+## Architecture Overview
 
-Analyse your X (Twitter) archive using Gemini AI and flag tweets for deletion based on custom criteria.
+```
+Data → Parser → Brain (ProcessTweets) → External IO (AI + Writer)
+```
+I structured the system  as a pipeline where ProcessTweets is the coordinator, and external dependencies like the AI client and writer are abstracted with interfaces. This keeps business logic separate from external I/O and makes the system easier to test by  being able to swap implementations.
 
-## Overview
 
-This tool processes your X archive, evaluates each tweet against your alignment criteria (e.g., unprofessional language, specific keywords, outdated opinions), and generates a list of tweet URLs marked for manual deletion.
 
-## The Task
+## Concurrency Strategy
 
-### Goal
-Request an archive of your posts on X, analyse them using Google's Gemini AI, and flag tweets for deletion based on any criteria. For instance:
-- Posts containing certain words you no longer want associated with you
-- Phrases that aren't professional
-- Old opinions you've moved on from
-- Any custom alignment rules you define
+**Decision: Sequential execution.**
 
-### Output
-A CSV file containing flagged tweet URLs and a deletion status flag:
-```csv
-tweet_url,deleted
-https://x.com/username/status/1234567890,false
-https://x.com/username/status/9876543210,false
+| Option | Trade-off |
+|--------|-----------|
+| Sequential | Predictable, checkpoint-safe, rate-limit-friendly |
+| Goroutines | Faster, but requires careful batching and complicates recovery |
+
+Goroutines are only justified if you stay safely with strict concurrency limits. For now, sequential wins because external APIs are unpredictable and recoverability beats speed.
+
+---
+
+## Error Handling
+
+**Approach: Fail-fast + checkpoint.**
+
+- API error → stop execution immediately
+- Resume from last saved progress on restart
+- Progress is saved **only after a successful response** (never on failure)
+
+```
+item 4 fails → saveProgress(3) → restart later → resumes at 4
 ```
 
-You can manually delete these tweets or optionally use the X API for automated deletion.
+Saving on failure creates ambiguity. Saving only on success guarantees idempotent restarts.
 
-## Requirements
+---
 
-1. **X Archive**: Download your X archive from Settings → Your Account → Download an archive of your data (takes 24-48 hours)
-2. **Gemini API Key**: Get one from [Google AI Studio](https://aistudio.google.com/app/apikey)
-3. **Your alignment criteria**: Define what makes a tweet "unaligned" with your current values
+## Performance vs. Safety Trade-offs
 
-## Setup
+| Factor | Decision | Reason |
+|--------|----------|--------|
+| Speed | Low priority | External API can have unpredictable latency due to network speed and other factors |
+| API cost | Controlled | Sequential processing helps prevent unnecessary expenses |
+| Reliability | High priority | Checkpoint recovery is the core reason |
+| Concurrency | None | Adds unnecessary complexity right now |
 
-### 1. Request Your X Archive
 
-1. Go to x.com and log in
-2. Navigate to: More → Settings and privacy → Your account → Download an archive of your data
-3. Verify your identity
-4. Wait 24-48 hours for the email with download link
-5. Extract the ZIP file
+---
 
-### 2. Get Gemini API Key
+## Why Go Fits This Problem
 
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create API key
-3. Add to your config file (see implementation)
+- **Simple error model** — `(value, error)` return pairs make failing fast easier and error handling easier.
 
-### 3. (Optional) X API Access: OVERKILL, NOT NECESSARY
+- **Easy file interactions** — There are various built in functions that make I/O operations easy manipulable
 
-**Note**: This is overkill for most users. Manual deletion via the CSV output is simpler and free.
+---
 
-If you really want automated deletion:
-1. Go to [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
-2. Create a Project and App
-3. Generate API keys and tokens
-5. Use API to delete flagged tweets programmatically
+## Resumability Design
 
-For 99% of use cases, **just delete manually using the CSV output**.
+The checkpoint file holds the last successfully processed index.
 
-## Implementation
-
-You are free to use:
-- Any architectural pattern
-- Any programming language
-- Any design decisions you see fit
-
-Document your choices in `TRADEOFFS.md` (see below).
-
-## Repository Structure
 ```
-tweet-audit/
-├── README.md
-├── TRADEOFFS.md          # Your implementation trade-offs (required)
-├── .gitignore            # Must ignore archive files and output
-├── src/                  # Your implementation
-├── tests/                # Your tests (required)
-└── config.example.json   # Example config (no real keys)
+On start  → read checkpoint → start = checkpoint + 1
+On success → write checkpoint → i
+On failure → return error → checkpoint unchanged
 ```
 
-## Critical Requirements
-
-### Testing
-
-**You must include tests.**
-
-Integration tests with actual Gemini API calls are overkill and not neccessary (costs money).
-
-### TRADEOFFS.md
-
-Create a concise document explaining:
-- Architecture choices (why this pattern?)
-- Concurrency strategy (sequential vs batch vs full async?)
-- Error handling approach (retry? fail fast? log and continue?)
-- Performance vs safety trade-offs
-- Why you chose your specific language/framework
-
-**Keep it under 500 words.**
-
-## Submission
-
-### Code Review Process
-
-**If you need reviews:**
-
-1. Create a private repo (if you don't want comments to be public)
-2. Add `benx421` as a collaborator
-3. Push your current code to a branch called `review-request` (or similar)
-4. Push an empty commit or a README to `main`/`master` branch
-5. Create a PR from `review-request` to `main`/`master` branch
-6. Request review from `benx421`
-
-When I have time, I will accept the invite and review your code.
-
-## Example Alignment Criteria
-```json
-{
-  "criteria": {
-    "forbidden_words": ["crypto", "NFT", "hustlegrindset"],
-    "professional_check": true,
-    "tone": "respectful and thoughtful",
-    "exclude_politics": true
-  }
-}
-```
-
-Pass this to Gemini and construct any prompt you deem fit.
