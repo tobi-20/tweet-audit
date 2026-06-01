@@ -13,6 +13,9 @@ func LoadProgress(path string) (int, error) {
 		}
 		return 0, err
 	}
-	i, _ := strconv.Atoi(string(data))
+	i, err := strconv.Atoi(string(data))
+	if err != nil {
+		return 0, err
+	}
 	return i, nil
 }

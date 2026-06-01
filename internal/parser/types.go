@@ -20,7 +20,8 @@ type Processor interface {
 }
 
 type ContentParser struct {
-	client  model.AIClient
-	writer  writer.Writer
-	sleepFn func()
+	client         model.AIClient
+	writer         writer.Writer
+	checkpointPath string
+	sleepFn        func()
 }

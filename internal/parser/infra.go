@@ -64,7 +64,7 @@ func FormatPrompt(text string) string {
 func (p *ContentParser) GetResponse(instr string) (string, error) {
 	var response model.ModelResponse
 	if instr == "" {
-
+		return "", errors.New("prompt cannot be empty")
 	}
 	res, err := p.client.Analyze(instr)
 	if err != nil {
@@ -91,9 +91,17 @@ func shouldDelete(decision string) (bool, error) {
 
 func (p *ContentParser) ProcessTweets(i int, tweets []ArchiveTweet) error {
 	txt := tweets[i].Tweet.FullText
+	if txt == "" {
+		return errors.New("Full text cannot be empty")
+	}
+
+	tweetId := tweets[i].Tweet.ID
+	if tweetId == "" {
+		return errors.New("Id string cannot be empty")
+	}
 	//
 	instr := FormatPrompt(txt)
-	tweetAddr := "https://x.com/" + USERNAME + "/status/" + tweets[i].Tweet.ID
+	tweetAddr := "https://x.com/" + USERNAME + "/status/" + tweetId
 
 	//l
 	log.Println(tweetAddr)
@@ -111,7 +119,7 @@ func (p *ContentParser) ProcessTweets(i int, tweets []ArchiveTweet) error {
 		return err
 	}
 	//
-	if err := loader.SaveProgress(i); err != nil {
+	if err := loader.SaveProgress(i+1, p.checkpointPath); err != nil {
 		return err
 	}
 	return nil

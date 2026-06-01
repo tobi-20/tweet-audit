@@ -25,9 +25,10 @@ func NewContentParser(fileName string) (*ContentParser, error) {
 	sleepFn := func() { time.Sleep(13 * time.Second) }
 
 	return &ContentParser{
-		client:  client,
-		writer:  w,
-		sleepFn: sleepFn,
+		client:         client,
+		writer:         w,
+		sleepFn:        sleepFn,
+		checkpointPath: "progress.txt",
 	}, nil
 }
 
@@ -47,13 +48,13 @@ func (p *ContentParser) Parse(path string) error {
 	//https://x.com/gboye_tobiloba/status/204076442884966479
 
 	//
-	startIdx, err := loader.LoadProgress("progress.txt")
+	startIdx, err := loader.LoadProgress(p.checkpointPath)
 	if err != nil {
 		return err
 	}
 
 	//
-	for i := startIdx + 1; i <= 10; i++ {
+	for i := startIdx; i <= 10; i++ {
 
 		err := p.ProcessTweets(i, tweets)
 		if err != nil {
