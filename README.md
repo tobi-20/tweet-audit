@@ -14,7 +14,7 @@ Data → Parser → Brain (ProcessTweets) → External IO (AI + Writer)
 
 ```go
 type AIClient interface {
-    Generate(prompt string) (string, error)
+	Analyze(prompt string) (string, error)
 }
 ```
 
