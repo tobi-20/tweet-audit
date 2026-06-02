@@ -1,2 +1,4 @@
 .env
 progress.txt
+flagged.csv
+tweets.js

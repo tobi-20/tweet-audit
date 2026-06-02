@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"os"
 
 	"google.golang.org/genai"
 )
@@ -18,7 +17,7 @@ type GeminiClient struct {
 func NewGeminiClient(apiKey string) (*GeminiClient, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  os.Getenv("GEMINI_API_KEY"),
+		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {

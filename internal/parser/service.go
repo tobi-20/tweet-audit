@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"tweet-audit/internal/loader"
@@ -25,10 +25,11 @@ func NewContentParser(fileName string) (*ContentParser, error) {
 	sleepFn := func() { time.Sleep(13 * time.Second) }
 
 	return &ContentParser{
-		client:         client,
-		writer:         w,
-		sleepFn:        sleepFn,
-		checkpointPath: "progress.txt",
+		client:              client,
+		writer:              w,
+		sleepFn:             sleepFn,
+		checkpointPath:      "progress.txt",
+		FailedToProcessPath: "skipped.txt",
 	}, nil
 }
 
@@ -58,8 +59,9 @@ func (p *ContentParser) Parse(path string) error {
 
 		err := p.ProcessTweets(i, tweets)
 		if err != nil {
-
-			log.Println(err)
+			if err := os.WriteFile(p.FailedToProcessPath, []byte(strconv.Itoa(i)), 0644); err != nil {
+				return err
+			}
 			continue
 		}
 		if i%10 == 0 {

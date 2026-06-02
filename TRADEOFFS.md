@@ -20,9 +20,9 @@ Goroutines are only justified if you stay safely with strict concurrency limits.
 
 ## Error Handling
 
-**Approach: Fail-fast + checkpoint.**
+**Approach: Log Fail + checkpoint.**
 
-- API error → stop execution immediately
+- API error → log the error and continue looping 
 - Resume from last saved progress on restart
 - Progress is saved **only after a successful response** (never on failure)
 
@@ -30,7 +30,7 @@ Goroutines are only justified if you stay safely with strict concurrency limits.
 item 4 fails → saveProgress(3) → restart later → resumes at 4
 ```
 
-Saving on failure creates ambiguity. Saving only on success guarantees idempotent restarts.
+Saving only on success guarantees idempotent restarts.
 
 ---
 
